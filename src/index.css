@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body { background: #F4F2EE; color: #121212; }
+body { font-family: "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+::selection { background: #121212; color: #F4F2EE; }
+:focus-visible { outline: 2px solid #2B44E0; outline-offset: 2px; }
+
+/* Grain de papier très discret sur tout l'outil (texture de la DA, jamais sur les données). */
+.grain { pointer-events: none; position: fixed; inset: 0; z-index: 70; opacity: 0.045; mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+
+/* Barres de défilement fines, à la couleur Craie. */
+* { scrollbar-width: thin; scrollbar-color: #E6E2DA transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #E6E2DA; border-radius: 99px; border: 3px solid #F4F2EE; }
+.sans-barre { scrollbar-width: none; } .sans-barre::-webkit-scrollbar { display: none; }
+
+kbd { font-family: inherit; }
+
+.tabular { font-variant-numeric: lining-nums; }
+
+input[type='number']::-webkit-inner-spin-button, input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type='number'] { -moz-appearance: textfield; }
+
+@layer components {
+  .champ { @apply h-11 w-full rounded-xl border border-craie bg-white px-3.5 text-[15px] text-encre transition placeholder:text-pierre/50 hover:border-pierre/40 focus:border-encre focus:outline-none focus:ring-4 focus:ring-encre/5; }
+  textarea.champ { @apply h-auto py-3; }
+  .etiquette { @apply mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.1em] text-pierre; }
+  .carte { @apply rounded-[20px] border border-craie/80 bg-white shadow-[0_1px_2px_rgba(18,18,18,0.03)]; }
+  .carte-lien { @apply carte transition duration-300 ease-out hover:-translate-y-1 hover:border-craie hover:shadow-[0_22px_48px_-24px_rgba(18,18,18,0.28)]; }
+}
+
+@keyframes apparition { from { opacity: 0 } to { opacity: 1 } }
+@keyframes montee { from { opacity: 0; transform: translateY(14px) scale(0.99) } to { opacity: 1; transform: none } }
+@keyframes glisse { from { transform: translateX(32px); opacity: 0 } to { transform: none; opacity: 1 } }
+.apparition { animation: apparition 0.18s ease-out both; }
+.montee { animation: montee 0.28s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.glisse { animation: glisse 0.32s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@media (prefers-reduced-motion: reduce) { .apparition, .montee, .glisse { animation: none; } *, *::before, *::after { transition-duration: 0.01ms !important; } }
+
+/* Devis PDF : seule la copie « imprimable » est imprimée. */
+.imprimable { display: none; }
+@media print {
+  @page { margin: 12mm; }
+  body > *:not(.imprimable) { display: none !important; }
+  .imprimable { display: block !important; }
+  .grain { display: none !important; }
+  html, body { background: #fff !important; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
