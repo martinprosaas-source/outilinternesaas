@@ -102,64 +102,37 @@ function ConnexionLocale() {
   )
 }
 
-// En ligne : e-mail + mot de passe, ou création du compte (une fois par personne).
+// En ligne : e-mail + mot de passe. Les comptes sont créés à l'avance (un par associé).
 function Connexion() {
-  const { seConnecter, creerCompte } = useStore()
-  const [mode, setMode] = useState('connexion')
+  const { seConnecter } = useStore()
   const [email, setEmail] = useState('')
   const [mdp, setMdp] = useState('')
   const [voir, setVoir] = useState(false)
-  const [etat, setEtat] = useState(null) // null | envoi | confirmer | message d'erreur
-  const creation = mode === 'creation'
+  const [etat, setEtat] = useState(null) // null | envoi | message d'erreur
   const valider = async (e) => {
     e.preventDefault()
     setEtat('envoi')
-    try {
-      if (creation) { const aConfirmer = await creerCompte(email.trim(), mdp); setEtat(aConfirmer ? 'confirmer' : null) }
-      else { await seConnecter(email.trim(), mdp) }
-    } catch (err) { setEtat(err.message) }
-  }
-  if (etat === 'confirmer') {
-    return (
-      <Cadre>
-        <motion.div initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={RESSORT} className="mb-6 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white"><Icone nom="mail" className="h-6 w-6" /></motion.div>
-        <h1 className="text-[36px] font-extrabold leading-none tracking-[-0.035em]">Regarde tes e-mails.</h1>
-        <p className="mt-4 text-[15px] leading-relaxed text-pierre">On vient d’envoyer un lien de confirmation à <b className="text-encre">{email}</b>. Clique dessus, puis reviens te connecter ici.</p>
-        <button onClick={() => { setEtat(null); setMode('connexion') }} className="mt-8 inline-flex items-center gap-1.5 text-sm font-bold underline-offset-4 hover:underline"><Icone nom="gauche" className="h-4 w-4" /> Revenir à la connexion</button>
-      </Cadre>
-    )
+    try { await seConnecter(email.trim(), mdp) } catch (err) { setEtat(err.message) }
   }
   return (
     <Cadre>
-      <div className="relative grid grid-cols-2 rounded-2xl border border-craie bg-white p-1 shadow-[0_1px_2px_rgba(18,18,18,0.04)]">
-        {[{ id: 'connexion', label: 'Se connecter' }, { id: 'creation', label: 'Créer mon compte' }].map((o) => (
-          <button key={o.id} type="button" onClick={() => { setMode(o.id); setEtat(null) }} className={`relative flex h-11 items-center justify-center rounded-xl text-sm font-bold transition-colors ${mode === o.id ? 'text-papier' : 'text-pierre hover:text-encre'}`}>
-            {mode === o.id && <motion.span layoutId="mode-connexion" transition={RESSORT} className="absolute inset-0 rounded-xl bg-encre" />}
-            <span className="relative">{o.label}</span>
-          </button>
-        ))}
-      </div>
-      <Presence mode="wait" initial={false}>
-        <motion.div key={mode} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25, ease: EASE }} className="mt-9">
-          <h1 className="text-[40px] font-extrabold leading-none tracking-[-0.035em]">{creation ? 'Bienvenue.' : 'Connexion'}</h1>
-          <p className="mt-3 font-serif text-[17px] italic text-pierre">{creation ? 'Crée ton accès une fois, puis choisis ta place dans l’équipe.' : 'Chacun arrive sur ce qui l’attend.'}</p>
-        </motion.div>
-      </Presence>
-      <form onSubmit={valider} className="mt-8 space-y-4">
+      <h1 className="text-[40px] font-extrabold leading-none tracking-[-0.035em]">Connexion</h1>
+      <p className="mt-3 font-serif text-[17px] italic text-pierre">Chacun arrive sur ce qui l’attend.</p>
+      <form onSubmit={valider} className="mt-9 space-y-4">
         <label className="block">
           <span className="etiquette">E-mail</span>
           <input type="email" required autoFocus autoComplete="username" className="champ h-12" value={email} onChange={(e) => setEmail(e.target.value)} />
         </label>
         <label className="block">
-          <span className="etiquette">Mot de passe{creation ? ' (6 caractères minimum)' : ''}</span>
+          <span className="etiquette">Mot de passe</span>
           <div className="relative">
-            <input type={voir ? 'text' : 'password'} required minLength={6} autoComplete={creation ? 'new-password' : 'current-password'} className="champ h-12 pr-20" value={mdp} onChange={(e) => setMdp(e.target.value)} />
+            <input type={voir ? 'text' : 'password'} required autoComplete="current-password" className="champ h-12 pr-20" value={mdp} onChange={(e) => setMdp(e.target.value)} />
             <button type="button" onClick={() => setVoir(!voir)} className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-pierre hover:text-encre">{voir ? 'Masquer' : 'Afficher'}</button>
           </div>
         </label>
         <motion.button whileTap={{ scale: 0.98 }} type="submit" disabled={etat === 'envoi'}
           className="group flex h-12 w-full items-center justify-center gap-2 rounded-full bg-accent font-semibold text-white shadow-[0_12px_28px_-12px_rgba(43,68,224,0.8)] transition-colors hover:bg-[#2237c4] disabled:opacity-60">
-          {etat === 'envoi' ? (creation ? 'Création…' : 'Connexion…') : <>{creation ? 'Créer mon compte' : 'Se connecter'} <Icone nom="fleche" className="h-4 w-4 transition-transform group-hover:translate-x-1" epaisseur={2.2} /></>}
+          {etat === 'envoi' ? 'Connexion…' : <>Se connecter <Icone nom="fleche" className="h-4 w-4 transition-transform group-hover:translate-x-1" epaisseur={2.2} /></>}
         </motion.button>
         <Presence>
           {etat && etat !== 'envoi' && <motion.p initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="rounded-xl bg-[#FDE0DD] px-3.5 py-2.5 text-sm text-[#8A1C12]">{etat}</motion.p>}

@@ -96,14 +96,6 @@ export function StoreProvider({ children }) {
     if (error) throw new Error(messageErreur(error))
   }, [])
 
-  // Retourne true si Supabase demande de confirmer l'adresse avant la première connexion.
-  const creerCompte = useCallback(async (email, motDePasse) => {
-    const { data: r, error } = await supabase.auth.signUp({ email, password: motDePasse, options: { emailRedirectTo: window.location.origin } })
-    if (error) throw new Error(messageErreur(error))
-    if (r.user && r.user.identities?.length === 0) throw new Error('Un compte existe déjà avec cet e-mail : connecte-toi.')
-    return !r.session
-  }, [])
-
   const placesLibres = useCallback(async () => {
     const { data: r, error } = await supabase.rpc('places_libres')
     if (error) throw new Error(messageErreur(error))
@@ -254,10 +246,10 @@ export function StoreProvider({ children }) {
   const moi = MEMBRES.find((m) => m.id === moiId) || null
   const valeur = useMemo(() => ({
     data, moi, etat, enLigne, email: session?.user?.email, sauvegarde,
-    connecter, deconnecter, seConnecter, creerCompte, placesLibres, rejoindre,
+    connecter, deconnecter, seConnecter, placesLibres, rejoindre,
     agir, modifier, creerDossier, commenter, supprimer, prochainNumero, reinitialiser,
     erreur, setErreur, effacerErreur: () => setErreurBrute(null), toast, notifier,
-  }), [data, moi, etat, session, sauvegarde, connecter, deconnecter, seConnecter, creerCompte, placesLibres, rejoindre, agir, modifier, creerDossier, commenter, supprimer, prochainNumero, reinitialiser, erreur, setErreur, toast, notifier])
+  }), [data, moi, etat, session, sauvegarde, connecter, deconnecter, seConnecter, placesLibres, rejoindre, agir, modifier, creerDossier, commenter, supprimer, prochainNumero, reinitialiser, erreur, setErreur, toast, notifier])
 
   return <Contexte.Provider value={valeur}>{children}</Contexte.Provider>
 }
