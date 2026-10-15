@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import * as W from './workflow.js'
+import { BLOCS, cleItem } from './trame.js'
 
-const prop = (titre, jours = 4) => ({ id: titre, titre, description: '', jours, revue: {} })
+const besoin = (besoin, priorite = 'indispensable') => ({ id: besoin, qui: 'La compta', besoin, pour: 'gagner du temps', priorite, preuve: '', revue: {} })
+const toutCoche = () => Object.fromEntries(BLOCS.flatMap((b) => b.items.map((i) => [cleItem(b.id, i.id), true])))
 
 describe('parcours complet d’un dossier', () => {
   it('va du prospect à la livraison', () => {
@@ -11,8 +13,10 @@ describe('parcours complet d’un dossier', () => {
     expect(d.etape).toBe('audit')
     expect(W.aMoiDeJouer(d, 'hugo')).toBe(true)
 
-    expect(() => W.soumettreAudit(d, 'hugo')).toThrow(/proposition/)
-    d = { ...d, audit: { ...d.audit, propositions: [prop('CRM setters', 6), prop('Espace membre', 8), prop('App mobile', 20)] } }
+    expect(() => W.soumettreAudit(d, 'hugo')).toThrow(/9 blocs/)
+    d = { ...d, audit: { ...d.audit, coches: toutCoche(), acces: [{ id: 'a', outil: 'Whop' }], fiche: { ...d.audit.fiche, exclus: 'Les pubs' } } }
+    expect(() => W.soumettreAudit(d, 'hugo')).toThrow(/besoin/)
+    d = { ...d, audit: { ...d.audit, besoins: [besoin('les commissions'), besoin('un espace membre'), besoin('une app mobile'), besoin('un classement', 'plus_tard'), besoin('les pubs Meta', 'hors')] } }
     d = W.soumettreAudit(d, 'hugo')
     expect(d.etape).toBe('revue')
 
@@ -22,12 +26,17 @@ describe('parcours complet d’un dossier', () => {
     expect(d.audit.retours).toHaveLength(1)
     d = W.soumettreAudit(d, 'hugo')
 
-    const verdicts = { 'CRM setters': 'ok', 'Espace membre': 'reserve', 'App mobile': 'non' }
-    d = { ...d, audit: { ...d.audit, propositions: d.audit.propositions.map((p) => ({ ...p, revue: { verdict: verdicts[p.titre], jours: '' } })) } }
+    const verdicts = { 'les commissions': ['ok', 6], 'un espace membre': ['reserve', 8], 'une app mobile': ['non', ''] }
+    d = { ...d, audit: { ...d.audit, besoins: d.audit.besoins.map((b) => (verdicts[b.besoin] ? { ...b, revue: { verdict: verdicts[b.besoin][0], jours: verdicts[b.besoin][1] } } : b)) } }
+    expect(W.verdictGlobal(d.audit)).toBe('reserve')
+    expect(W.pretAValider(d.audit)).toBe(true)
     d = W.validerAudit(d, 'martin', 'D-2026-001')
     expect(d.etape).toBe('devis')
-    expect(d.devis.lignes.map((l) => l.titre)).toEqual(['CRM setters', 'Espace membre'])
+    expect(d.devis.lignes.map((l) => l.titre)).toEqual(['Les commissions', 'Un espace membre'])
     expect(W.totalDevis(d.devis).total).toBe(14 * d.devis.tjm)
+    expect(d.devis.conditions).toMatch(/plus tard.*un classement/)
+    expect(d.devis.conditions).toMatch(/Exclu : une app mobile ; les pubs Meta ; Les pubs/)
+    expect(d.devis.conditions).toMatch(/Accès à fournir : Whop/)
 
     d = W.soumettreDevis(d, 'martin')
     expect(W.nbValidations(d)).toBe(1)
@@ -53,6 +62,18 @@ describe('parcours complet d’un dossier', () => {
     d = W.livrer(d, 'martin')
     expect(d.etape).toBe('livre')
     expect(d.historique.length).toBeGreaterThan(10)
+  })
+
+  it('une case sans réponse devient une question ouverte', () => {
+    let a = W.auditVide()
+    const cle = cleItem('argent', 'cas')
+    expect(W.etatItem(a, cle)).toBe(null)
+    a = { ...a, questions: [{ id: 'q', item: cle, texte: 'Upsell ?', aQui: 'Le dirigeant', reponse: '' }] }
+    expect(W.etatItem(a, cle)).toBe('question')
+    expect(W.questionsOuvertes(a)).toHaveLength(1)
+    const c = W.completionAudit({ ...a, coches: Object.fromEntries(BLOCS.find((b) => b.id === 'argent').items.filter((i) => i.id !== 'cas').map((i) => [cleItem('argent', i.id), true])) })
+    expect(c.blocs.argent).toMatchObject({ termine: true, questions: 1 })
+    expect(c.faits).toBe(1)
   })
 
   it('remise et acompte', () => {

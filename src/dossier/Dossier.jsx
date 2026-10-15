@@ -22,8 +22,8 @@ function resume(d, ph, enCours) {
   if (enCours) return S.etatTexte(d)
   if (ph.id === 'prospection') return d.prospection.gagneLe ? `Call signé le ${dateCourte(d.prospection.gagneLe)}` : 'Terminée'
   if (ph.id === 'audit') {
-    const p = d.audit.propositions
-    return `${p.filter((x) => x.revue?.verdict && x.revue.verdict !== 'non').length}/${p.length} propositions retenues`
+    const ind = W.normaliserAudit(d.audit).besoins.filter((b) => b.priorite === 'indispensable')
+    return `${ind.filter((b) => b.revue?.verdict && b.revue.verdict !== 'non').length}/${ind.length} besoins retenus`
   }
   if (ph.id === 'devis') return `${d.devis.numero} · ${euros(W.totalDevis(d.devis).total)} · signé le ${dateCourte(d.devis.signeLe)}`
   return S.etatTexte(d)
@@ -79,8 +79,8 @@ function actionsPage(d, t) {
 }
 
 const AIDE = {
-  audit: 'Remplis les sections ci-dessous pendant ou après le call, puis envoie en revue.',
-  revue: 'Donne un verdict à chaque proposition plus bas, puis valide ou renvoie à Hugo.',
+  audit: 'Suis les 9 blocs pendant les entretiens : chaque case cochée, ou notée en question ouverte. Puis liste les besoins.',
+  revue: 'Lis le livrable plus bas, donne un verdict et des jours à chaque besoin indispensable, puis valide ou renvoie à Hugo.',
   devis: 'Ajuste les lignes et les conditions plus bas, puis soumets à Nino et Hugo.',
   delivery: 'Fais avancer chaque livrable plus bas. Le projet se clôture quand tout est livré.',
 }

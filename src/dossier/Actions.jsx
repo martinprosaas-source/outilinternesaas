@@ -49,8 +49,7 @@ export function BoutonsAction({ d, ids, taille = 'sm', sombre = false, aller, on
     let run = a.run
     if (a.valider) {
       // Le numéro de devis n'est réservé que si la validation peut passer.
-      const props = d.audit.propositions
-      const pret = props.every((p) => p.revue?.verdict) && props.some((p) => p.revue.verdict !== 'non')
+      const pret = W.pretAValider(d.audit)
       const numero = d.devis?.numero || (pret ? prochainNumero() : null)
       run = (x, m) => W.validerAudit(x, m, numero)
     }

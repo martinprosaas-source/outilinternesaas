@@ -1,29 +1,35 @@
 // Données de démonstration : un dossier à chaque étape du parcours, pour valider l'interface à trois.
 // Les dossiers sont construits avec les vraies fonctions du parcours, puis leurs dates sont étalées dans le passé.
-import { CATALOGUE } from './config.js'
 import { decalerJour, aujourdhui, jourLocal, uid } from './lib.js'
+import { BLOCS, cleItem } from './trame.js'
 import * as W from './workflow.js'
 
-const prop = (titre, impact, jours) => {
-  const c = CATALOGUE.find((x) => x.titre === titre)
-  return { id: uid('p'), titre, description: c?.description || '', impact, jours: jours ?? c?.jours ?? 3, revue: {} }
-}
+const lignes = (prefixe, liste, champs) => liste.map((x) => ({ id: uid(prefixe), ...Object.fromEntries(champs.map((k, i) => [k, x[i] ?? ''])) }))
 
-function auditComplet({ offre, prix, ca, ventes, setters, closers, managers = 0, support = 0, outils, leads, show, closing, panier, douleurs, propositions }) {
+// Un audit tel que Hugo le rend : toutes les cases couvertes, sauf les `manques`, notés en question ouverte.
+function auditComplet({ chef, offres, volumes, sources, tunnel, equipe, outils, regles, besoins, recette, budget, lancement, depart, douleur, manques = [] }) {
+  const a = W.auditVide()
+  const coches = Object.fromEntries(BLOCS.flatMap((b) => b.items.map((i) => [cleItem(b.id, i.id), true])))
+  manques.forEach(([cle]) => { coches[cle] = false })
   return {
-    ...W.auditVide(),
-    business: { offre, prix, caMensuel: ca, ventesMois: ventes, acquisition: ['Instagram', 'YouTube'] },
-    equipe: { setters, closers, managers, support, notes: '' },
-    process: {
-      acquisition: 'Contenu organique Instagram + YouTube, lien en bio vers un formulaire Typeform.',
-      setting: 'Les setters qualifient en DM puis posent un call dans le Calendly des closers.',
-      closing: 'Call Zoom de 45 min, paiement en 1x ou 3x via Stripe.',
-      onboarding: 'Ajout manuel sur Skool + message WhatsApp de bienvenue.',
+    ...a,
+    entretiens: { dirigeant: true, closer: true, setter: true, compta: true, ecrit: true },
+    coches,
+    questions: manques.map(([item, texte, aQui]) => ({ id: uid('q'), item, texte, aQui, reponse: '' })),
+    notes: { douleurs: douleur, chiffres: 'Tout est dans un Google Sheet tenu à la main par le head of sales. Closing = ventes ÷ rendez-vous tenus ; les annulés ne comptent pas.' },
+    fiche: {
+      ...a.fiche, budget, lancement, dateDepart: depart, tunnel, sources,
+      decideurDevis: chef, valideurRecette: chef, externes: 'Aucun',
+      exclus: 'Les publicités, le contenu, l’hébergement des vidéos de formation.',
+      offres: lignes('o', offres, ['offre', 'prix', 'paiement']),
+      equipe: lignes('e', equipe, ['prenom', 'role', 'pays', 'langue', 'appareil']).map((e) => ({ ...e, langue: e.langue || 'Français', appareil: e.appareil || 'Les deux' })),
+      volumes: { leads: volumes[0], rdv: volumes[1], ventes: volumes[2], ca: volumes[3] },
+      decideurs: { commissions: chef, chiffres: chef, acces: chef, budget: chef },
     },
-    outils: { liste: outils, notes: '' },
-    chiffres: { leadsMois: leads, tauxShow: show, tauxClosing: closing, panier },
-    douleurs: { texte: douleurs, urgence: 'Haute' },
-    propositions,
+    besoins: besoins.map(([qui, besoin, pour, priorite = 'indispensable', preuve = 'Capture du Google Sheet']) => ({ id: uid('b'), qui, besoin, pour, priorite, preuve, revue: {} })),
+    regles: lignes('r', regles, ['regle', 'exemple', 'validePar']),
+    recette: lignes('c', recette, ['texte']),
+    acces: lignes('a', outils.map((o) => [o, 'Pro', 'À vérifier', chef, chef, 'Au démarrage']), ['outil', 'abonnement', 'api', 'admin', 'cles', 'quand']),
   }
 }
 
@@ -68,7 +74,28 @@ function recaler(d) {
   return x
 }
 
-const verdict = (d, v) => ({ ...d, audit: { ...d.audit, propositions: d.audit.propositions.map((p, i) => ({ ...p, revue: { verdict: v[i] || 'ok', jours: p.jours, commentaire: v[i] === 'reserve' ? 'Dépend de l’accès à leur compte Stripe.' : v[i] === 'non' ? 'Hors de notre périmètre pour l’instant.' : '' } })) } })
+// Martin donne son verdict aux besoins indispensables, dans l'ordre : [['ok', 6], ['reserve', 4]…].
+const verdict = (d, v) => {
+  let i = 0
+  const besoins = d.audit.besoins.map((b) => {
+    if (b.priorite !== 'indispensable') return b
+    if (!v[i]) return b
+    const [x, jours] = v[i++]
+    return { ...b, revue: { verdict: x, jours: x === 'non' ? '' : String(jours), commentaire: x === 'reserve' ? 'Dépend de l’accès à leur compte Stripe.' : x === 'non' ? 'Hors de notre périmètre pour l’instant.' : '' } }
+  })
+  return { ...d, audit: { ...d.audit, besoins } }
+}
+
+const REGLES = (chef) => [
+  ['10 % au closer, sur l’encaissé, versé le 5 du mois suivant', 'Vente 3 500 € en 3x, 1 000 € payés puis l’élève part : le closer touche 100 €', chef],
+  ['30 € au setter par rendez-vous tenu', 'Rendez-vous annulé ou absent : 0 €. Deux setters sur un lead : le premier qui a posé le rendez-vous', chef],
+  ['Remboursement sous 14 jours : commission reprise', 'Vente 2 000 € remboursée au jour 10 : 200 € retirés au closer le mois suivant', chef],
+]
+const RECETTE = [
+  ['Chaque setter ne voit que ses leads et ses commissions'],
+  ['Un paiement Stripe apparaît sur sa vente en moins d’une minute'],
+  ['Le relevé de commissions du mois tombe juste sur un mois réel repris du Sheet'],
+]
 
 export function donneesDemo() {
   const j = (n) => decalerJour(aujourdhui(), n)
@@ -94,56 +121,83 @@ export function donneesDemo() {
 
   // ── Audit en cours (Hugo) ──
   d = W.passerAudit(base({ nom: 'Thomas Girard', business: 'Girard Trading Academy', niche: 'Trading', canal: 'YouTube', tailleCA: '150', contact: { email: 'thomas@girard-academy.com', telephone: '06 22 33 44 55', instagram: '@thomasgirard' } }), 'nino')
-  d = { ...d, audit: { ...d.audit, callLe: j(0), business: { ...d.audit.business, offre: 'Formation trading 12 semaines', prix: '2 497 €', caMensuel: '150', ventesMois: '60' }, equipe: { setters: 8, closers: 4, managers: 1, support: 1, notes: 'Un head of sales qui gère tout sur Notion.' } } }
+  d = { ...d, audit: { ...d.audit, callLe: j(0), entretiens: { dirigeant: true },
+    coches: { 'business.offres': true, 'business.tunnel': true, 'business.volumes': true, 'business.sources': true, 'personnes.equipe': true, 'personnes.langue': true },
+    questions: [{ id: uid('q'), item: 'personnes.voir_faire', texte: 'Un closer doit-il voir les ventes des autres closers ?', aQui: 'Thomas', reponse: '' }],
+    notes: { business: 'Gros volume YouTube, 60 ventes par mois, tout passe par un head of sales qui gère sur Notion.' },
+    fiche: { ...d.audit.fiche, offres: lignes('o', [['Formation trading 12 semaines', '2 497 €', '1x ou 4x'], ['Coaching 1:1', '6 000 €', '1x ou 6x']], ['offre', 'prix', 'paiement']), volumes: { leads: '1 800', rdv: '260', ventes: '60', ca: '150 k€' }, sources: ['YouTube', 'Instagram', 'Setting'], tunnel: 'Vidéo YouTube → page de capture → formulaire → rendez-vous Calendly avec un setter → call closer → paiement Stripe → accès Skool',
+      equipe: lignes('e', [['Thomas', 'Dirigeant', 'France', 'Français', 'Les deux'], ['Rayan', 'Head of sales', 'France', 'Français', 'Ordinateur'], ['Ilyes', 'Closer', 'Dubaï (UTC+4)', 'Français', 'Ordinateur']], ['prenom', 'role', 'pays', 'langue', 'appareil']) } } }
   dossiers.push(dater(d, 5, 0))
 
   // ── Audit renvoyé par Martin ──
   d = W.passerAudit(base({ nom: 'Camille Roux', business: 'Roux Immo Club', niche: 'Immobilier', canal: 'Réseau', tailleCA: '90', contact: { email: 'camille@rouximmo.fr', telephone: '', instagram: '@camille.immo' } }), 'nino')
-  d = { ...d, audit: auditComplet({ offre: 'Club immobilier annuel', prix: '3 900 €', ca: '90', ventes: '23', setters: 5, closers: 2, outils: ['Google Sheets', 'Calendly', 'WhatsApp', 'Stripe'], leads: '900', show: '62 %', closing: '', panier: '3 900 €', douleurs: 'Aucune visibilité sur qui pose quels rendez-vous. Les commissions sont calculées à la main chaque fin de mois, avec des erreurs.', propositions: [prop('CRM setters', 'Tout le suivi des 5 setters au même endroit'), prop('Commissions automatiques', 'Fin des erreurs de paie')] }) }
+  d = { ...d, audit: auditComplet({ chef: 'Camille (dirigeante)', budget: '6 à 8 k€', lancement: '1er décembre, nouvelle promo', depart: j(-14), offres: [['Club immobilier annuel', '3 900 €', '1x, 3x ou 12x']], volumes: ['900', '140', '23', '90 k€'], sources: ['Instagram', 'Recommandation', 'Setting'], tunnel: 'Post Instagram → DM setter → rendez-vous Calendly → call closer → paiement Stripe → onboarding WhatsApp',
+    equipe: [['Camille', 'Dirigeante', 'France'], ['Nadia', 'Setter', 'Maroc (UTC+1)', 'Français', 'Téléphone'], ['Paul', 'Closer', 'France']], outils: ['Google Sheets', 'Calendly', 'WhatsApp', 'Stripe'], regles: REGLES('Camille'), recette: RECETTE,
+    douleur: 'Aucune visibilité sur qui pose quels rendez-vous. Les commissions sont calculées à la main chaque fin de mois, avec des erreurs.',
+    besoins: [['Camille', 'savoir qui a posé chaque rendez-vous', 'payer les bons setters', 'indispensable', 'Onglet « Setting » du Sheet'], ['La compta', 'un relevé des commissions de chaque setter et closer', 'ne plus recalculer à la main en fin de mois', 'indispensable', 'Le relevé d’août, avec 3 erreurs'], ['Un closer', 'la fiche du lead avant chaque call', 'préparer le call en 30 secondes', 'plus_tard', 'Message WhatsApp de Paul']],
+    manques: [['argent.cas', 'Un setter qui pose un rendez-vous annulé puis reprogrammé, il touche quoi ?', 'Camille']] }) }
   d = W.soumettreAudit(d, 'hugo')
-  d = W.renvoyerAudit(d, 'martin', 'Il manque le taux de closing et le nombre de leads par setter : sans ça je ne peux pas dimensionner le CRM.')
+  d = W.renvoyerAudit(d, 'martin', 'La règle du rendez-vous annulé puis reprogrammé est encore en question : sans elle je ne peux pas chiffrer les commissions. Et il manque l’export du Sheet en preuve.')
   dossiers.push(dater(d, 11, 1))
 
   // ── Revue technique (Martin) ──
   d = W.passerAudit(base({ nom: 'Mehdi Haddad', business: 'Dropshipping Elite', niche: 'Dropshipping', canal: 'Instagram', tailleCA: '210', contact: { email: 'mehdi@dropelite.io', telephone: '07 11 22 33 44', instagram: '@mehdi.drop' } }), 'nino')
-  d = { ...d, audit: auditComplet({ offre: 'Accompagnement dropshipping 90 jours', prix: '1 997 €', ca: '210', ventes: '105', setters: 12, closers: 5, managers: 1, support: 2, outils: ['GoHighLevel', 'Calendly', 'Slack', 'Stripe', 'Skool'], leads: '2 400', show: '58 %', closing: '24 %', panier: '1 997 €', douleurs: 'GoHighLevel est mal configuré : les setters perdent des leads, personne ne sait qui a posé quoi. Les closers n’ont aucun tableau de bord.', propositions: [prop('CRM setters', 'Ne plus perdre un seul lead'), prop('CRM closers', 'Préparer chaque call en 30 secondes'), prop('Dashboard de pilotage', 'Voir le CA du jour en temps réel'), prop('Espace membre', 'Sortir de Skool, à leur image', 10)] }) }
+  d = { ...d, audit: auditComplet({ chef: 'Mehdi (dirigeant)', budget: '12 à 15 k€', lancement: 'Mi-novembre, avant le Black Friday', depart: j(-14), offres: [['Accompagnement dropshipping 90 jours', '1 997 €', '1x ou 3x'], ['Upsell 1:1', '1 500 €', '1x']], volumes: ['2 400', '380', '105', '210 k€'], sources: ['Ads', 'Instagram', 'TikTok', 'Setting'], tunnel: 'Pub Meta → VSL → formulaire → rendez-vous GoHighLevel → call closer → paiement Stripe → accès Skool',
+    equipe: [['Mehdi', 'Dirigeant', 'France'], ['Sofiane', 'Head of sales', 'France'], ['Yanis', 'Closer', 'Canada (UTC-5)'], ['Inès', 'Setter', 'Tunisie (UTC+1)', 'Français', 'Téléphone'], ['Linda', 'Compta', 'France', 'Français', 'Ordinateur']], outils: ['GoHighLevel', 'Calendly', 'Slack', 'Stripe', 'Skool'], regles: REGLES('Mehdi'), recette: RECETTE,
+    douleur: 'GoHighLevel est mal configuré : les setters perdent des leads, personne ne sait qui a posé quoi. Les closers n’ont aucun tableau de bord.',
+    besoins: [['Un setter', 'voir ses leads à relancer du jour', 'ne plus en perdre', 'indispensable', 'Export GoHighLevel : 312 leads sans suite en septembre'], ['Un closer', 'ses calls du jour avec la fiche du lead', 'préparer chaque call', 'indispensable', 'Capture de l’agenda'], ['Mehdi', 'le CA encaissé du jour et le closing par closer, sur les rendez-vous tenus', 'savoir qui coacher', 'indispensable', 'Onglet « Stats » du Sheet'], ['Les élèves', 'un espace membre à leur image', 'sortir de Skool', 'plus_tard', 'Message de Mehdi'], ['Mehdi', 'des publicités Meta gérées par l’outil', 'gagner du temps', 'hors', '']] }) }
   d = W.soumettreAudit(d, 'hugo')
-  d = { ...d, audit: { ...d.audit, propositions: d.audit.propositions.map((p, i) => (i === 0 ? { ...p, revue: { verdict: 'ok', jours: 6, commentaire: '' } } : p)) } }
+  d = verdict(d, [['ok', 6]])
   dossiers.push(dater(d, 8, 0))
 
   // ── Devis en préparation (Martin) ──
   d = W.passerAudit(base({ nom: 'Julie Perrin', business: 'Perrin Coaching', niche: 'Développement perso', canal: 'Instagram', tailleCA: '70', contact: { email: 'julie@perrincoaching.fr', telephone: '', instagram: '@julie.perrin' } }), 'nino')
-  d = { ...d, audit: auditComplet({ offre: 'Coaching de groupe 6 mois', prix: '2 200 €', ca: '70', ventes: '32', setters: 4, closers: 2, outils: ['Notion', 'Calendly', 'Discord', 'Systeme.io'], leads: '700', show: '65 %', closing: '28 %', panier: '2 200 €', douleurs: 'Onboarding entièrement manuel : 2 h par nouvel élève. Les relances setters se font de mémoire.', propositions: [prop('Onboarding client automatisé', '2 h gagnées par vente'), prop('CRM setters', 'Relances automatiques')] }) }
-  d = W.validerAudit(verdict(W.soumettreAudit(d, 'hugo'), ['ok', 'ok']), 'martin', numero())
+  d = { ...d, audit: auditComplet({ chef: 'Julie (dirigeante)', budget: '5 k€', lancement: 'Janvier, rentrée de la promo', depart: j(-20), offres: [['Coaching de groupe 6 mois', '2 200 €', '1x ou 6x']], volumes: ['700', '110', '32', '70 k€'], sources: ['Instagram', 'Setting'], tunnel: 'Story Instagram → DM setter → rendez-vous Calendly → call closer → paiement Systeme.io → onboarding manuel Discord',
+    equipe: [['Julie', 'Dirigeante', 'France'], ['Léa', 'Setter', 'France', 'Français', 'Téléphone'], ['Hakim', 'Closer', 'Belgique']], outils: ['Notion', 'Calendly', 'Discord', 'Systeme.io'], regles: REGLES('Julie'), recette: RECETTE,
+    douleur: 'Onboarding entièrement manuel : 2 h par nouvel élève. Les relances setters se font de mémoire.',
+    besoins: [['Julie', 'que chaque nouvel élève reçoive ses accès et son premier rendez-vous sans intervention', 'gagner 2 h par vente', 'indispensable', 'Procédure Notion de 14 étapes'], ['Un setter', 'la liste des relances du jour', 'ne plus relancer de mémoire', 'indispensable', 'Capture du Notion des setters']] }) }
+  d = W.validerAudit(verdict(W.soumettreAudit(d, 'hugo'), [['ok', 4], ['ok', 5]]), 'martin', numero())
   dossiers.push(dater(d, 14, 1))
 
   // ── Validation à 3 (Hugo n'a pas encore validé) ──
   d = W.passerAudit(base({ nom: 'Antoine Leroy', business: 'Leroy Business School', niche: 'Business en ligne', canal: 'LinkedIn', tailleCA: '320', contact: { email: 'antoine@leroy.school', telephone: '06 98 76 54 32', instagram: '@antoine.leroy' } }), 'nino')
-  d = { ...d, audit: auditComplet({ offre: 'Programme business en ligne', prix: '4 500 €', ca: '320', ventes: '71', setters: 18, closers: 7, managers: 2, support: 3, outils: ['HubSpot', 'iClosed', 'Slack', 'Stripe', 'Zapier / Make'], leads: '4 000', show: '55 %', closing: '22 %', panier: '4 500 €', douleurs: 'HubSpot coûte une fortune et l’équipe ne l’utilise pas. Le calcul des commissions de 25 personnes prend 2 jours par mois.', propositions: [prop('CRM setters', 'Remplacer HubSpot pour les setters'), prop('CRM closers', 'Un outil pensé pour le closing'), prop('Commissions automatiques', '2 jours gagnés par mois'), prop('Dashboard de pilotage', 'Classement en direct de l’équipe')] }) }
-  d = W.validerAudit(verdict(W.soumettreAudit(d, 'hugo'), ['ok', 'ok', 'ok', 'reserve']), 'martin', numero())
+  d = { ...d, audit: auditComplet({ chef: 'Antoine (dirigeant)', budget: '15 à 20 k€', lancement: 'Le 15, lancement de la nouvelle offre', depart: j(-30), offres: [['Programme business en ligne', '4 500 €', '1x, 3x ou 6x'], ['Mastermind', '12 000 €', '1x ou 2x']], volumes: ['4 000', '620', '71', '320 k€'], sources: ['Ads', 'YouTube', 'Setting', 'Partenaires'], tunnel: 'Pub Meta et YouTube → webinaire → formulaire → rendez-vous iClosed → call closer → paiement Stripe → onboarding Slack',
+    equipe: [['Antoine', 'Dirigeant', 'France'], ['Karim', 'Head of sales', 'France'], ['Sami', 'Closer', 'Dubaï (UTC+4)'], ['Mélanie', 'Setter', 'Portugal (UTC+0)', 'Français', 'Téléphone'], ['Chloé', 'Compta', 'France', 'Français', 'Ordinateur']], outils: ['HubSpot', 'iClosed', 'Slack', 'Stripe', 'Zapier / Make'], regles: REGLES('Antoine'), recette: RECETTE,
+    douleur: 'HubSpot coûte une fortune et l’équipe ne l’utilise pas. Le calcul des commissions de 25 personnes prend 2 jours par mois.',
+    besoins: [['Un setter', 'ses leads, ses relances et ses rendez-vous posés au même endroit', 'remplacer HubSpot', 'indispensable', 'Facture HubSpot + capture'], ['Un closer', 'ses calls du jour à la bonne heure, avec l’historique du lead', 'préparer chaque call', 'indispensable', 'Agenda iClosed'], ['La compta', 'le relevé de commissions de chacun, chaque semaine', 'ne plus y passer 2 jours par mois', 'indispensable', 'Le fichier de calcul de septembre'], ['Antoine', 'le classement de l’équipe en direct', 'piloter les ventes', 'indispensable', 'Onglet « Stats » du Sheet'], ['Le partenaire', 'voir uniquement les ventes de sa source', 'suivre sa commission', 'plus_tard', 'Message d’Antoine']] }) }
+  d = W.validerAudit(verdict(W.soumettreAudit(d, 'hugo'), [['ok', 6], ['ok', 6], ['ok', 3], ['reserve', 4]]), 'martin', numero())
   d = { ...d, devis: { ...d.devis, maintenance: 390, remise: 1000 } }
   d = W.voterDevis(W.soumettreDevis(d, 'martin'), 'nino')
   dossiers.push(dater(d, 18, 0))
 
   // ── Chez le client (Nino relance) ──
   d = W.passerAudit(base({ nom: 'Nora Belkacem', business: 'Crypto Mastery', niche: 'Crypto', canal: 'YouTube', tailleCA: '110', contact: { email: 'nora@cryptomastery.fr', telephone: '', instagram: '@nora.crypto' } }), 'nino')
-  d = { ...d, audit: auditComplet({ offre: 'Formation crypto + communauté', prix: '1 490 €', ca: '110', ventes: '74', setters: 6, closers: 3, outils: ['Airtable', 'Calendly', 'Discord', 'Stripe'], leads: '1 500', show: '60 %', closing: '26 %', panier: '1 490 €', douleurs: 'Les leads froids ne sont jamais recontactés : 6 mois de leads dorment dans Airtable.', propositions: [prop('Tunnel low ticket', 'Récupérer les leads perdus'), prop('CRM setters', 'Suivi des relances')] }) }
-  d = W.validerAudit(verdict(W.soumettreAudit(d, 'hugo'), ['ok', 'ok']), 'martin', numero())
+  d = { ...d, audit: auditComplet({ chef: 'Nora (dirigeante)', budget: '7 k€', lancement: 'Dès que possible', depart: j(-25), offres: [['Formation crypto + communauté', '1 490 €', '1x ou 3x']], volumes: ['1 500', '230', '74', '110 k€'], sources: ['YouTube', 'Setting'], tunnel: 'Vidéo YouTube → formulaire → rendez-vous Calendly → call closer → paiement Stripe → accès Discord',
+    equipe: [['Nora', 'Dirigeante', 'France'], ['Bilal', 'Setter', 'Algérie (UTC+1)', 'Français', 'Téléphone'], ['Marc', 'Closer', 'Suisse']], outils: ['Airtable', 'Calendly', 'Discord', 'Stripe'], regles: REGLES('Nora'), recette: RECETTE,
+    douleur: 'Les leads froids ne sont jamais recontactés : 6 mois de leads dorment dans Airtable.',
+    besoins: [['Nora', 'une offre d’entrée envoyée aux leads froids', 'récupérer les leads perdus', 'indispensable', 'Export Airtable : 4 200 leads sans suite'], ['Un setter', 'la liste de ses relances du jour', 'ne plus en oublier', 'indispensable', 'Capture Airtable']] }) }
+  d = W.validerAudit(verdict(W.soumettreAudit(d, 'hugo'), [['ok', 5], ['ok', 6]]), 'martin', numero())
   d = W.envoyerDevis(W.voterDevis(W.voterDevis(W.soumettreDevis({ ...d, devis: { ...d.devis, maintenance: 290 } }, 'martin'), 'nino'), 'hugo'), 'martin')
   dossiers.push(dater(d, 22, 3))
 
   // ── Delivery en cours (Martin) ──
   d = W.passerAudit(base({ nom: 'Lucas Fontaine', business: 'Fontaine Mindset', niche: 'Développement perso', canal: 'Recommandation', tailleCA: '180', contact: { email: 'lucas@fontaine-mindset.com', telephone: '06 45 67 89 01', instagram: '@lucas.fontaine' } }), 'nino')
-  d = { ...d, audit: auditComplet({ offre: 'Accompagnement mindset premium', prix: '3 000 €', ca: '180', ventes: '60', setters: 9, closers: 4, managers: 1, outils: ['Google Sheets', 'Calendly', 'WhatsApp', 'Stripe', 'Skool'], leads: '1 800', show: '61 %', closing: '25 %', panier: '3 000 €', douleurs: 'Tout est sur Google Sheets, rien n’est fiable.', propositions: [prop('CRM setters', ''), prop('CRM closers', ''), prop('Dashboard de pilotage', ''), prop('Automatisations', '')] }) }
-  d = W.validerAudit(verdict(W.soumettreAudit(d, 'hugo'), ['ok', 'ok', 'ok', 'ok']), 'martin', numero())
+  d = { ...d, audit: auditComplet({ chef: 'Lucas (dirigeant)', budget: '12 k€', lancement: 'Avant la fin du mois prochain', depart: j(-40), offres: [['Accompagnement mindset premium', '3 000 €', '1x ou 3x']], volumes: ['1 800', '290', '60', '180 k€'], sources: ['Instagram', 'Recommandation', 'Setting'], tunnel: 'Instagram → DM setter → rendez-vous Calendly → call closer → paiement Stripe → onboarding WhatsApp + Skool',
+    equipe: [['Lucas', 'Dirigeant', 'France'], ['Anaïs', 'Setter', 'France', 'Français', 'Téléphone'], ['Romain', 'Closer', 'France']], outils: ['Google Sheets', 'Calendly', 'WhatsApp', 'Stripe', 'Skool'], regles: REGLES('Lucas'), recette: RECETTE,
+    douleur: 'Tout est sur Google Sheets, rien n’est fiable.',
+    besoins: [['Un setter', 'ses leads et ses relances du jour', 'ne plus travailler sur le Sheet', 'indispensable'], ['Un closer', 'ses calls du jour et l’issue de chaque call', 'suivre ses ventes', 'indispensable'], ['Lucas', 'le CA encaissé et le closing par closer', 'piloter l’équipe', 'indispensable'], ['Lucas', 'une alerte WhatsApp à chaque vente', 'suivre en direct', 'indispensable', 'Message de Lucas']] }) }
+  d = W.validerAudit(verdict(W.soumettreAudit(d, 'hugo'), [['ok', 6], ['ok', 6], ['ok', 4], ['ok', 2]]), 'martin', numero())
   d = W.signer(W.envoyerDevis(W.voterDevis(W.voterDevis(W.soumettreDevis({ ...d, devis: { ...d.devis, maintenance: 290 } }, 'martin'), 'nino'), 'hugo'), 'martin'), 'nino')
   d = { ...d, delivery: { ...d.delivery, debut: j(-16), livraisonPrevue: j(12), livrables: d.delivery.livrables.map((l, i) => ({ ...l, statut: ['livre', 'recette', 'en_cours', 'a_faire'][i] })), paiements: d.delivery.paiements.map((p, i) => (i === 0 ? { ...p, recuLe: j(-15) } : p)) } }
   dossiers.push(dater(d, 34, 2))
 
   // ── Livré ──
   d = W.passerAudit(base({ nom: 'Emma Caron', business: 'Caron Fit', niche: 'Fitness', canal: 'Instagram', tailleCA: '60', contact: { email: 'emma@caronfit.fr', telephone: '', instagram: '@emma.caronfit' } }), 'nino')
-  d = { ...d, audit: auditComplet({ offre: 'Programme fitness 12 semaines', prix: '997 €', ca: '60', ventes: '60', setters: 3, closers: 2, outils: ['Notion', 'Calendly', 'Stripe'], leads: '900', show: '63 %', closing: '30 %', panier: '997 €', douleurs: 'Pas de suivi des setters.', propositions: [prop('CRM setters', ''), prop('Commissions automatiques', '')] }) }
-  d = W.validerAudit(verdict(W.soumettreAudit(d, 'hugo'), ['ok', 'ok']), 'martin', numero())
+  d = { ...d, audit: auditComplet({ chef: 'Emma (dirigeante)', budget: '5 k€', lancement: 'Pas de date fixe', depart: j(-60), offres: [['Programme fitness 12 semaines', '997 €', '1x ou 2x']], volumes: ['900', '150', '60', '60 k€'], sources: ['Instagram', 'TikTok'], tunnel: 'TikTok et Instagram → formulaire → rendez-vous Calendly → call closer → paiement Stripe → accès à l’app',
+    equipe: [['Emma', 'Dirigeante', 'France'], ['Jade', 'Setter', 'France', 'Français', 'Téléphone'], ['Tom', 'Closer', 'France']], outils: ['Notion', 'Calendly', 'Stripe'], regles: REGLES('Emma'), recette: RECETTE,
+    douleur: 'Pas de suivi des setters.',
+    besoins: [['Emma', 'voir l’activité de chaque setter', 'savoir qui travaille', 'indispensable'], ['La compta', 'les commissions calculées chaque semaine', 'payer sans erreur', 'indispensable']] }) }
+  d = W.validerAudit(verdict(W.soumettreAudit(d, 'hugo'), [['ok', 6], ['ok', 3]]), 'martin', numero())
   d = W.signer(W.envoyerDevis(W.voterDevis(W.voterDevis(W.soumettreDevis({ ...d, devis: { ...d.devis, maintenance: 190 } }, 'martin'), 'nino'), 'hugo'), 'martin'), 'nino')
   d = { ...d, delivery: { ...d.delivery, debut: j(-40), livraisonPrevue: j(-12), livrables: d.delivery.livrables.map((l) => ({ ...l, statut: 'livre' })), paiements: d.delivery.paiements.map((p, i) => ({ ...p, recuLe: j(i ? -12 : -39) })) } }
   dossiers.push(dater(W.livrer(d, 'martin'), 55, 12))

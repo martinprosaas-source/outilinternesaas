@@ -2,21 +2,39 @@
 // Fonctions pures : elles reçoivent un dossier et rendent le dossier suivant (ou lèvent une erreur lisible).
 import { ETAPES, MEMBRES, TARIFS, etape, membre } from './config.js'
 import { aujourdhui, decalerJour, euros, jourISO, maintenant, uid } from './lib.js'
+import { BLOCS, cleItem } from './trame.js'
 
 // ─────────────────────────── Création ───────────────────────────
 
+// L'audit suit la trame (src/trame.js) : les 9 blocs, puis le livrable en 5 parties que Martin lit en revue.
 export const auditVide = () => ({
-  business: { offre: '', prix: '', caMensuel: '', ventesMois: '', acquisition: [] },
-  equipe: { setters: 0, closers: 0, managers: 0, support: 0, notes: '' },
-  process: { acquisition: '', setting: '', closing: '', onboarding: '' },
-  outils: { liste: [], notes: '' },
-  chiffres: { leadsMois: '', tauxShow: '', tauxClosing: '', panier: '' },
-  douleurs: { texte: '', urgence: '' },
-  propositions: [],
   callLe: '',
+  entretiens: {},   // { dirigeant: true, closer: true, … }
+  coches: {},       // { 'business.offres': true } : les cases couvertes
+  notes: {},        // { business: '…' } : ce qu'ils ont dit, bloc par bloc
+  pieces: [],       // { id, bloc, nom, lien } : les preuves
+  fiche: {
+    budget: '', decideurDevis: '', lancement: '', dateDepart: '', valideurRecette: '', exclus: '', tunnel: '', externes: '',
+    offres: [], sources: [], equipe: [],
+    volumes: { leads: '', rdv: '', ventes: '', ca: '' },
+    decideurs: { commissions: '', chiffres: '', acces: '', budget: '' },
+  },
+  besoins: [],      // { id, qui, besoin, pour, priorite, preuve, revue: { verdict, jours, commentaire } }
+  regles: [],       // { id, regle, exemple, validePar }
+  recette: [],      // { id, texte }
+  acces: [],        // { id, outil, abonnement, api, admin, cles, quand }
+  questions: [],    // { id, texte, aQui, item, reponse }
   soumisLe: null,
   retours: [],
 })
+
+// Complète un audit partiel (ou ancien) avec les champs vides : l'écran peut tout lire sans se poser de questions.
+export function normaliserAudit(a) {
+  const v = auditVide()
+  if (!a) return v
+  const f = a.fiche || {}
+  return { ...v, ...a, fiche: { ...v.fiche, ...f, volumes: { ...v.fiche.volumes, ...f.volumes }, decideurs: { ...v.fiche.decideurs, ...f.decideurs } } }
+}
 
 export function nouveauDossier(champs, qui) {
   const d = {
@@ -107,29 +125,37 @@ export function passerAudit(d, qui) {
 
 // ─────────────────────────── Audit (Hugo) ───────────────────────────
 
-const rempli = (v) => (Array.isArray(v) ? v.length > 0 : typeof v === 'number' ? v > 0 : !!String(v ?? '').trim())
-
-export const SECTIONS_AUDIT = [
-  { id: 'business', label: 'Business', test: (a) => rempli(a.business.offre) && rempli(a.business.caMensuel) },
-  { id: 'equipe', label: 'Équipe', test: (a) => a.equipe.setters + a.equipe.closers + a.equipe.managers + a.equipe.support > 0 || rempli(a.equipe.notes) },
-  { id: 'process', label: 'Process actuel', test: (a) => Object.values(a.process).filter(rempli).length >= 2 },
-  { id: 'outils', label: 'Outils', test: (a) => rempli(a.outils.liste) || rempli(a.outils.notes) },
-  { id: 'chiffres', label: 'Chiffres', test: (a) => Object.values(a.chiffres).filter(rempli).length >= 2 },
-  { id: 'douleurs', label: 'Problèmes', test: (a) => rempli(a.douleurs.texte) },
-  { id: 'propositions', label: 'Ce qu’on peut faire', test: (a) => a.propositions.length > 0 },
-]
+// Une case est couverte (cochée) ou notée en question ouverte ; sinon elle reste à faire.
+export function etatItem(audit, cle) {
+  if (audit.coches?.[cle]) return 'ok'
+  if (audit.questions?.some((q) => q.item === cle)) return 'question'
+  return null
+}
 
 export function completionAudit(audit) {
-  if (!audit) return { faits: 0, total: SECTIONS_AUDIT.length, sections: {} }
-  const sections = Object.fromEntries(SECTIONS_AUDIT.map((s) => [s.id, s.test(audit)]))
-  return { faits: Object.values(sections).filter(Boolean).length, total: SECTIONS_AUDIT.length, sections }
+  const a = normaliserAudit(audit)
+  const blocs = Object.fromEntries(BLOCS.map((b) => {
+    const etats = b.items.map((i) => etatItem(a, cleItem(b.id, i.id)))
+    const faits = etats.filter(Boolean).length
+    return [b.id, { faits, total: etats.length, questions: etats.filter((e) => e === 'question').length, termine: faits === etats.length }]
+  }))
+  return { faits: Object.values(blocs).filter((b) => b.termine).length, total: BLOCS.length, blocs }
 }
+
+export const besoinsAChiffrer = (a) => (a?.besoins || []).filter((b) => b.priorite !== 'hors')
+export const questionsOuvertes = (a) => (a?.questions || []).filter((q) => !q.reponse?.trim())
 
 export function soumettreAudit(d, qui) {
   verifier(d.etape === 'audit', 'L’audit n’est pas en cours.')
-  verifier(d.audit.propositions.length > 0, 'Ajoute au moins une proposition dans « Ce qu’on peut faire ».')
-  const relu = d.audit.retours.length > 0
-  return deplacer({ ...d, audit: { ...d.audit, soumisLe: maintenant() } }, 'revue', qui, relu ? 'a corrigé l’audit et l’a renvoyé en revue technique' : 'a terminé l’audit et l’a envoyé en revue technique')
+  const a = normaliserAudit(d.audit)
+  const c = completionAudit(a)
+  const restants = BLOCS.filter((b) => !c.blocs[b.id].termine)
+  verifier(!restants.length, `Il reste ${restants.length} bloc${restants.length > 1 ? 's' : ''} à terminer (${restants.map((b) => b.titre).join(', ')}). Coche chaque case, ou note le manque en question ouverte.`)
+  verifier(a.besoins.length > 0, 'Ajoute au moins un besoin dans « La liste des besoins ».')
+  verifier(a.besoins.every((b) => b.besoin?.trim() && b.priorite), 'Chaque besoin doit dire de quoi il s’agit et avoir une priorité.')
+  verifier(a.besoins.some((b) => b.priorite === 'indispensable'), 'Au moins un besoin doit être indispensable au lancement.')
+  const relu = a.retours.length > 0
+  return deplacer({ ...d, audit: { ...a, soumisLe: maintenant() } }, 'revue', qui, relu ? 'a corrigé l’audit et l’a renvoyé en revue technique' : 'a terminé l’audit et l’a envoyé en revue technique')
 }
 
 // ─────────────────────────── Revue technique (Martin) ───────────────────────────
@@ -140,36 +166,65 @@ export const VERDICTS = [
   { id: 'non', label: 'Pas faisable' },
 ]
 
+// Le verdict d'ensemble, tiré des verdicts sur les besoins indispensables.
+export function verdictGlobal(a) {
+  const v = (a?.besoins || []).filter((b) => b.priorite === 'indispensable').map((b) => b.revue?.verdict)
+  if (!v.length || v.some((x) => !x)) return null
+  if (v.every((x) => x === 'ok')) return 'ok'
+  if (v.every((x) => x === 'non')) return 'non'
+  return 'reserve'
+}
+
+// Les besoins indispensables ont tous un verdict, et au moins un est faisable.
+export function pretAValider(a) {
+  const ind = (a?.besoins || []).filter((b) => b.priorite === 'indispensable')
+  return ind.length > 0 && ind.every((b) => b.revue?.verdict) && ind.some((b) => b.revue.verdict !== 'non')
+}
+
+const joursDe = (b) => Number(b.revue?.jours) || 0
+const majuscule = (t) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t)
+
 export function renvoyerAudit(d, qui, message) {
   verifier(d.etape === 'revue', 'L’audit n’est pas en revue.')
   verifier(message?.trim(), 'Dis à Hugo ce qui manque ou ce qu’il faut revoir.')
-  const audit = { ...d.audit, retours: [{ id: uid('r'), date: maintenant(), qui, texte: message.trim() }, ...d.audit.retours] }
+  const a = normaliserAudit(d.audit)
+  const audit = { ...a, retours: [{ id: uid('r'), date: maintenant(), qui, texte: message.trim() }, ...a.retours] }
   return deplacer({ ...d, audit }, 'audit', qui, `a renvoyé l’audit à Hugo : « ${message.trim()} »`)
 }
 
 export function validerAudit(d, qui, numero) {
   verifier(d.etape === 'revue', 'L’audit n’est pas en revue.')
-  const props = d.audit.propositions
-  verifier(props.every((p) => p.revue?.verdict), 'Donne un verdict à chaque proposition avant de valider.')
-  const retenues = props.filter((p) => p.revue.verdict !== 'non')
-  verifier(retenues.length > 0, 'Aucune proposition faisable : renvoie l’audit à Hugo plutôt.')
-  // Le devis part des propositions retenues, au tarif journalier par défaut.
+  const a = normaliserAudit(d.audit)
+  const ind = a.besoins.filter((b) => b.priorite === 'indispensable')
+  verifier(ind.every((b) => b.revue?.verdict), 'Donne un verdict à chaque besoin indispensable avant de valider.')
+  const retenus = ind.filter((b) => b.revue.verdict !== 'non')
+  verifier(retenus.length > 0, 'Aucun besoin indispensable n’est faisable : renvoie l’audit à Hugo plutôt.')
+  // Le devis part des besoins indispensables retenus ; le reste est écrit noir sur blanc dans les conditions.
+  const plusTard = a.besoins.filter((b) => b.priorite === 'plus_tard')
+  const exclus = [...a.besoins.filter((b) => b.priorite === 'hors' || (b.priorite === 'indispensable' && b.revue.verdict === 'non')).map((b) => b.besoin), ...(a.fiche.exclus.trim() ? [a.fiche.exclus.trim()] : [])]
+  const outils = a.acces.map((x) => x.outil).filter(Boolean)
+  const conditions = [
+    plusTard.length && `Prévu plus tard, hors de ce devis : ${plusTard.map((b) => b.besoin).join(' ; ')}.`,
+    exclus.length && `Exclu : ${exclus.join(' ; ')}.`,
+    outils.length && `Accès à fournir : ${outils.join(', ')}.`,
+  ].filter(Boolean).join('\n')
+  const jours = retenus.reduce((s, b) => s + joursDe(b), 0)
   const devis = d.devis || {
     numero,
-    lignes: retenues.map((p) => ({ id: uid('l'), propositionId: p.id, titre: p.titre, description: p.description, jours: Number(p.revue.jours) || Number(p.jours) || 0, prix: (Number(p.revue.jours) || Number(p.jours) || 0) * TARIFS.tjm })),
+    lignes: retenus.map((b) => ({ id: uid('l'), besoinId: b.id, titre: majuscule(b.besoin.trim()), description: [b.qui, b.pour && `pour ${b.pour}`].filter(Boolean).join(' · '), jours: joursDe(b), prix: joursDe(b) * TARIFS.tjm })),
     tjm: TARIFS.tjm,
     remise: 0,
     acompte: TARIFS.acompte,
     maintenance: 0,
-    delaiSemaines: Math.max(2, Math.ceil(retenues.reduce((s, p) => s + (Number(p.revue.jours) || Number(p.jours) || 0), 0) / 4)),
-    conditions: '',
+    delaiSemaines: Math.max(2, Math.ceil(jours / 4)),
+    conditions,
     validations: {},
     modifs: [],
     envoyeLe: null,
     accepteLe: null,
     creeLe: maintenant(),
   }
-  return deplacer({ ...d, devis }, 'devis', qui, `a validé l’audit (${retenues.length}/${props.length} propositions retenues)`)
+  return deplacer({ ...d, audit: a, devis }, 'devis', qui, `a validé l’audit (${retenus.length}/${ind.length} besoins indispensables retenus)`)
 }
 
 // ─────────────────────────── Devis (Martin) ───────────────────────────
@@ -240,6 +295,8 @@ export function signer(d, qui) {
       { id: uid('p'), libelle: `Acompte ${d.devis.acompte} %`, montant: t.acompte, recuLe: null },
       { id: uid('p'), libelle: 'Solde à la livraison', montant: t.solde, recuLe: null },
     ].filter((p) => p.montant > 0),
+    recette: (d.audit?.recette || []).filter((c) => c.texte?.trim()).map((c) => ({ id: uid('c'), texte: c.texte.trim(), ok: false })),
+    valideurRecette: d.audit?.fiche?.valideurRecette || '',
     notes: '',
   }
   const devis = { ...d.devis, accepteLe: d.devis.accepteLe || maintenant(), signeLe: maintenant() }

@@ -101,6 +101,26 @@ export default function OngletDelivery({ d }) {
         {d.devis.maintenance > 0 && <p className="mt-3 text-sm text-pierre">Puis <b className="text-accent">{euros(d.devis.maintenance)} / mois</b> de maintenance après la livraison.</p>}
       </section>
 
+      {/* Critères de recette, repris de l'audit */}
+      {v.recette?.length > 0 && (
+        <section className="carte p-5 md:p-6">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <Surtitre>Critères de recette</Surtitre>
+            <span className="text-sm text-pierre"><b className="tabular text-encre">{v.recette.filter((c) => c.ok).length}/{v.recette.length}</b> validés{v.valideurRecette ? <> · côté client : <b className="text-encre">{v.valideurRecette}</b></> : ''}</span>
+          </div>
+          <ul className="space-y-1">
+            {v.recette.map((c) => (
+              <li key={c.id}>
+                <button type="button" disabled={fini} onClick={() => majV((x) => ({ ...x, recette: x.recette.map((y) => (y.id === c.id ? { ...y, ok: !y.ok } : y)) }))} className="flex w-full items-start gap-3 rounded-xl px-2 py-2 text-left transition enabled:hover:bg-papier">
+                  <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-colors ${c.ok ? 'bg-vert text-white' : 'border-2 border-craie'}`}>{c.ok && <Icone nom="coche" className="h-3 w-3" epaisseur={3} />}</span>
+                  <span className={`text-[14.5px] leading-snug ${c.ok ? 'text-pierre line-through decoration-craie' : ''}`}>{c.texte}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="carte p-5 md:p-6">
         <span className="etiquette">Notes de projet</span>
         <TexteLibre valeur={v.notes} onChange={(t) => majV((x) => ({ ...x, notes: t }))} placeholder="Accès, liens (repo, Supabase, Vercel), décisions prises avec le client…" />

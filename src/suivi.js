@@ -70,7 +70,7 @@ export function etatTexte(d) {
       if (auditRenvoye(d)) return 'Renvoyé par Martin · à corriger'
       if (d.audit.callLe && d.audit.callLe >= aujourdhui()) return `Call d’audit ${quand(d.audit.callLe)}`
       const c = W.completionAudit(d.audit)
-      return `Audit en cours · ${c.faits}/${c.total}`
+      return `Audit en cours · ${c.faits}/${c.total} blocs`
     }
     case 'revue': return 'En revue technique'
     case 'devis': return d.devis.modifs?.length ? 'Modification demandée' : 'À chiffrer'
